@@ -25,6 +25,10 @@ import { requestSuggestions } from '@/lib/ai/tools/request-suggestions';
 import { getWeather } from '@/lib/ai/tools/get-weather';
 import { isProductionEnvironment } from '@/lib/constants';
 import { myProvider } from '@/lib/ai/providers';
+import {
+  createLangchainUsageTracker,
+  hasExceededDailyLimit,
+} from '@/lib/langchain-token-usage';
 
 export const maxDuration = 60;
 
@@ -44,6 +48,15 @@ export async function POST(request: Request) {
 
     if (!session || !session.user || !session.user.id) {
       return new Response('Unauthorized', { status: 401 });
+    }
+
+    // Check if user has exceeded their daily token limit
+    const hasExceeded = await hasExceededDailyLimit(session.user.id);
+    if (hasExceeded) {
+      return new Response(
+        'Daily token limit exceeded. Please try again tomorrow.',
+        { status: 429 },
+      );
     }
 
     const userMessage = getMostRecentUserMessage(messages);
@@ -78,6 +91,9 @@ export async function POST(request: Request) {
         },
       ],
     });
+
+    // Create a usage tracker for this conversation
+    const usageTracker = createLangchainUsageTracker(session.user.id, id);
 
     return createDataStreamResponse({
       execute: (dataStream) => {
@@ -137,6 +153,11 @@ export async function POST(request: Request) {
                     },
                   ],
                 });
+
+                // Track token usage if available on the response object
+                if (response.usage) {
+                  await usageTracker.handleLLMEnd({ usage: response.usage });
+                }
               } catch (_) {
                 console.error('Failed to save chat');
               }

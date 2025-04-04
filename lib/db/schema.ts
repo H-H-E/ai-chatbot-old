@@ -9,15 +9,63 @@ import {
   primaryKey,
   foreignKey,
   boolean,
+  pgEnum,
+  integer,
+  date,
 } from 'drizzle-orm/pg-core';
+
+// User roles enum
+export const userRoleEnum = pgEnum('user_role', ['admin', 'user']);
 
 export const user = pgTable('User', {
   id: uuid('id').primaryKey().notNull().defaultRandom(),
   email: varchar('email', { length: 64 }).notNull(),
   password: varchar('password', { length: 64 }),
+  role: userRoleEnum('role').default('user').notNull(),
 });
 
 export type User = InferSelectModel<typeof user>;
+
+// User limits for token usage
+export const userLimits = pgTable('UserLimits', {
+  userId: uuid('userId')
+    .primaryKey()
+    .references(() => user.id),
+  maxTokensPerDay: integer('maxTokensPerDay').default(10000).notNull(),
+  maxConversations: integer('maxConversations').default(10).notNull(),
+  updatedAt: timestamp('updatedAt').defaultNow().notNull(),
+});
+
+export type UserLimits = InferSelectModel<typeof userLimits>;
+
+// Custom user prompts
+export const customPrompts = pgTable('CustomPrompts', {
+  id: uuid('id').primaryKey().notNull().defaultRandom(),
+  userId: uuid('userId')
+    .notNull()
+    .references(() => user.id),
+  name: varchar('name', { length: 256 }).notNull(),
+  prompt: text('prompt').notNull(),
+  createdAt: timestamp('createdAt').defaultNow().notNull(),
+  updatedAt: timestamp('updatedAt').defaultNow().notNull(),
+});
+
+export type CustomPrompt = InferSelectModel<typeof customPrompts>;
+
+// Usage tracking
+export const usageStats = pgTable('UsageStats', {
+  id: uuid('id').primaryKey().notNull().defaultRandom(),
+  userId: uuid('userId')
+    .notNull()
+    .references(() => user.id),
+  date: date('date').notNull(),
+  tokensUsed: integer('tokensUsed').default(0).notNull(),
+  messagesSent: integer('messagesSent').default(0).notNull(),
+  conversationId: uuid('conversationId').references(() => chat.id),
+  createdAt: timestamp('createdAt').defaultNow().notNull(),
+});
+
+export type UsageStats = InferSelectModel<typeof usageStats>;
 
 export const chat = pgTable('Chat', {
   id: uuid('id').primaryKey().notNull().defaultRandom(),
